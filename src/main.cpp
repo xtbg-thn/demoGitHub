@@ -1,61 +1,51 @@
 #include <Arduino.h>
-TaskHandle_t h1;
-TaskHandle_t h2;
-void maTache1(void *parametres)
+void tachePeriodique(void *pvParameters)
 {
-  int i1 = 0;
-  while (1) // boucle infinie
+  TickType_t xLastWakeTime;
+  double x = 0, y = 0;
+  // Lecture du nombre de ticks quand la tâche débute
+  xLastWakeTime = xTaskGetTickCount();
+  while (1)
   {
-    Serial.printf("maTache1 %4d\n", i1++);
-    delay(1000);
-    if (i1 == 5)
+    digitalWrite(16, HIGH); // Met le bit 16 du port 1 à 1 sans toucher aux autres bits
+    TickType_t debCalcul = xTaskGetTickCount();
+    // Des calculs pour que la tâche occupe le processeur
+    int nbTour = 3000 + rand() % 3000;
+    for (int i = 0; i < nbTour; i++)
     {
-      vTaskSuspend(NULL);
+      double xn = sin(x) + cos(y);
+      double yn = cos(x) + sin(y);
+      double d = sqrt(xn * xn + yn * yn);
+      if (d == 0)
+      {
+        x = 0;
+        y = 0;
+      }
+      else
+      {
+        x = xn / d;
+        y = yn / d;
+      }
     }
-  }
-}
-void maTache2(void *parametres)
-{
-  int i2 = 0;
-  while (1) // boucle infinie
-  {
-    Serial.printf("maTache2 %4d\n", i2++);
-
-    delay(4000);
+    TickType_t finCalcul = xTaskGetTickCount();
+    Serial.printf("Temps de calcul = %u\n", finCalcul - debCalcul);
+    // Endort la tâche pendant le temps restant par rapport au réveil,
+    // ici 200ms, donc la tâche s'effectue toutes les 200ms
+    digitalWrite(16, LOW); // Met le bit 16 du port 1 à 0 sans toucher aux autres bits
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(200)); // toutes les 200 ms
   }
 }
 void setup()
 {
   Serial.begin(115200);
-  while (!Serial)
-    ;
-  Serial.printf("Départ\n");
-  xTaskCreate(
-      maTache1,     /* Fonction de la tâche. */
-      "Ma tâche 1", /* Nom de la tâche. */
-      10000,        /* Taille de la pile de la tâche */
-      NULL,         /* Paramètres de la tâche, NULL si pas de paramètre */
-      1,            /* Priorité de la tâche */
-      &h1);         /* passer l'adresse du handle */
-  xTaskCreate(
-      maTache2,     /* Fonction de la tâche. */
-      "Ma tâche 2", /* Nom de la tâche. */
-      10000,        /* Taille de la pile de la tâche */
-      NULL,         /* Paramètres de la tâche, NULL si pas de paramètre */
-      1,            /* Priorité de la tâche */
-      &h2);         /* passer l'adresse du handle */
+  Serial.printf("Initialisation\n");
+  pinMode(16, OUTPUT); // configure P1.16 en sortie
+  // Création de la tâche périodique
+  xTaskCreate(tachePeriodique, "Tâche périodique", 10000, NULL, 2, NULL);
 }
 void loop()
 {
-  static int il = 0;                // persist across loops
-  Serial.printf("Loop %4d\n", il++);
-  if (il == 10)
-  {
-    vTaskDelete(h2);
-  }
-  else if (il == 15)
-  {
-    vTaskResume(h1);
-  }
+  static int i = 0;
+  Serial.printf("Boucle principale : %d\n", i++);
   delay(1000);
 }
