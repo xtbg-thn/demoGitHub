@@ -1,0 +1,61 @@
+/*
+Résumé et explication du programme (ESP32 / Arduino) — contrôle d'un gyropode
+
+But général
+- Programme qui simule/implémente un asservissement simple : une entrée binaire Ve, une sortie filtrée Vs (filtre du 1er ordre discret), et possibilité de modifier les paramètres Tau et Te via la liaison série.
+
+Variables globales
+- Ve (float) : entrée du système (modifiée par la tâche Vin).
+- Vs (float) : sortie filtrée (mise à jour par la tâche controle).
+- Te (float) : période d’échantillonnage en ms.
+- Tau (float) : constante de temps du filtre en ms.
+- A, B (float) : coefficients du filtre discret (recalculés dans setup et lors d’un changement de paramètres).
+- FlagCalcul (char) : drapeau pour indiquer qu’un calcul a eu lieu (utilisé pour affichage depuis loop()).
+
+Tâches FreeRTOS
+- controle(void *parameters)
+  - Boucle périodique exécutée toutes les Te ms via vTaskDelayUntil.
+  - Calcul du filtre discret : Vs = A * Ve + B * Vs;
+  - Met FlagCalcul = 1 puis attend la prochaine période.
+- Vin(void *parameters)
+  - Simulateur d’entrée : bascule Ve entre 0 et 1 toutes les 1s.
+
+Initialisation (setup)
+- Démarre le port série.
+- Crée les tâches controle et Vin (xTaskCreate).
+- Calcule initialement A et B :
+  - A = 1 / (1 + Tau / Te)   (équivalent à Te/(Te + Tau))
+  - B = Tau / Te * A         (équivalent à Tau/(Te + Tau))
+
+Communication série et parsing
+- serialEvent() lit les octets disponibles et appelle reception(char ch).
+- reception(char ch) construit une String caractère par caractère.
+  - À CR/LF, sépare la ligne par le premier espace en "commande" et "valeur".
+  - Commandes prises en charge :
+    - "Tau <valeur>" : met à jour Tau = valeur.toFloat() puis recalcule A et B.
+    - "Te <valeur>"  : met à jour Te = valeur.toInt() puis recalcule A et B.
+  - Après traitement, remet la chaîne à vide.
+
+Affichage
+- loop() vérifie FlagCalcul et affiche Ve et Vs via Serial.printf lorsque le calcul est fait, puis remet FlagCalcul à 0.
+
+Points d'attention et recommandations
+- Concurrence : Ve, Vs, FlagCalcul, Te, Tau, A, B sont partagés entre tâches sans protection. Déclarer les variables partagées volatile et/ou protéger par mutex / portENTER_CRITICAL() pour éviter conditions de course et lectures partielles.
+- String Arduino : usage de String peut fragmenter le heap sur longues durées. Préférer un buffer fixe char[] et du parsing C (sscanf/strtok) pour un système embarqué robuste.
+- Parsing de Te : Te est une float ; reception utilise toInt() — utiliser toFloat() si des valeurs non entières sont utiles.
+- Tests de fin de ligne : utiliser '\r' et '\n' et éviter l'opérateur 'or' (préférer || en C++).
+- Serial.printf et flottants : "%lf" n'est pas toujours supporté par printf embarqué ; utiliser "%f" ou Serial.println() ; activer le support float pour printf si nécessaire.
+- Calcul des coefficients : A = Te/(Te+Tau) et B = Tau/(Te+Tau) — vérifier unités (ms) et éviter division par zéro (valeur de Te trop petite).
+- Taille de pile des tâches : 10000 octets est élevé ; ajuster selon la mémoire disponible et la réelle nécessité.
+- Gestion CR+LF : prévoir d'ignorer le second caractère d'une paire CR+LF pour éviter commandes vides.
+
+Propositions d'amélioration possibles
+- Rendre les variables partagées atomiques/protégées.
+- Remplacer String par buffer char[] fixe.
+- Valider et contraindre les valeurs entrantes (plages min/max).
+- Ajouter commandes pour afficher les paramètres actuels (ex: "status").
+- Logique de protection contre divisions par zéro et valeurs aberrantes.
+
+Fin du commentaire.
+*/
+
